@@ -7,13 +7,13 @@ def get_source_files():
             yield os.path.join('/'.join(dirname.split('/')[1:]), filename)
 
 setup(
-    name='django-ckeditor',
+    name='sae-django-ckeditor',
     version='3.6.2.1',
-    description='Django admin CKEditor integration.',
+    description='Django admin CKEditor integration for SAE.',
     long_description = open('README.rst', 'r').read() + open('AUTHORS.rst', 'r').read() + open('CHANGELOG.rst', 'r').read(),
-    author='Shaun Sephton',
-    author_email='shaunsephton@gmail.com',
-    url='http://github.com/shaunsephton/django-ckeditor',
+    author='wangeek',
+    author_email='nifabric@gmail.com',
+    url='http://github.com/wangeek/sae-django-ckeditor',
     packages = find_packages(exclude=['project',]),
     install_requires = [
         'Pillow',

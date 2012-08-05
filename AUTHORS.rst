@@ -3,6 +3,10 @@ AUTHORS
 
 Created By
 ----------
+#. `wangeek <http://github.com/wangeek>`_
+
+Forked From
+----------
 #. `shaunsephton <http://github.com/shaunsephton>`_
 
 Contributors

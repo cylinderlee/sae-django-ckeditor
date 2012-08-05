@@ -1,8 +1,8 @@
-Django CKEditor
-================
-**Django admin CKEditor integration.**
+Django CKEditor for SAE(Sina App Engine)
+========================================
+**SAE Django admin CKEditor integration.**
 
-Provides a ``RichTextField`` and ``CKEditorWidget`` utilizing CKEditor with image upload and browsing support included.
+提供了 ``RichTextField`` 和 ``CKEditorWidget`` 实现的CKEditor在线所见即所得编辑集成。附带使用sae.storage 分布式文件存储服务实现的图片上传和浏览功能。
 
 .. contents:: Contents
     :depth: 5
@@ -20,11 +20,13 @@ Required
 
 #. Add a CKEDITOR_UPLOAD_PATH setting to the project's ``settings.py`` file. This setting specifies an absolute filesystem path to your CKEditor media upload directory. Make sure you have write permissions for the path, i.e.::
 
-    CKEDITOR_UPLOAD_PATH = "/home/media/media.lawrence.com/uploads"
+    CKEDITOR_UPLOAD_PATH = "uploads"
 
 #. Add CKEditor URL include to your project's ``urls.py`` file::
     
     (r'^ckeditor/', include('ckeditor.urls')),    
+
+#. 开通SAE storage服务，并新建名称与设置CKEDITOR_UPLOAD_PATH值相同的domain::
 
 Optional
 ~~~~~~~~

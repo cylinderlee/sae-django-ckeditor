@@ -8,6 +8,12 @@ from django.http import HttpResponse
 from django.shortcuts import render_to_response
 from django.template import RequestContext
 
+from sae import storage
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from StringIO import StringIO
+
 try:
     from PIL import Image, ImageOps
 except ImportError:
@@ -23,6 +29,8 @@ except ImportError:
         return fn
 
 THUMBNAIL_SIZE = (75, 75)
+domain = getattr(settings, "CKEDITOR_UPLOAD_PATH", 'base')
+storage_client = storage.Client()
 
 
 def get_available_name(name):
@@ -30,15 +38,14 @@ def get_available_name(name):
     Returns a filename that's free on the target storage system, and
     available for new content to be written to.
     """
-    dir_name, file_name = os.path.split(name)
-    file_root, file_ext = os.path.splitext(file_name)
-    # If the filename already exists, keep adding an underscore (before the
-    # file extension, if one exists) to the filename until the generated
-    # filename doesn't exist.
-    while os.path.exists(name):
-        file_root += '_'
-        # file_ext includes the dot.
-        name = os.path.join(dir_name, file_root + file_ext)
+    def exists(name):
+        try:
+            o = storage_client.stat(domain, name)
+        #except storage.ObjectNotExistsError:
+        except Exception:
+            return False
+    while exists(name):
+        name += '_'
     return name
 
 
@@ -51,7 +58,8 @@ def get_thumb_filename(file_name):
 
 
 def create_thumbnail(filename):
-    image = Image.open(filename)
+    saefile = StringIO(storage_client.get(domain,filename).data)
+    image = Image.open(saefile)
 
     # Convert to RGB if necessary
     # Thanks to Limodou on DjangoSnippets.org
@@ -61,28 +69,11 @@ def create_thumbnail(filename):
 
     # scale and crop to thumbnail
     imagefit = ImageOps.fit(image, THUMBNAIL_SIZE, Image.ANTIALIAS)
-    imagefit.save(get_thumb_filename(filename))
-
-
-def get_media_url(path):
-    """
-    Determine system file's media URL.
-    """
-    upload_prefix = getattr(settings, "CKEDITOR_UPLOAD_PREFIX", None)
-    if upload_prefix:
-        url = upload_prefix + path.replace(settings.CKEDITOR_UPLOAD_PATH, '')
-    else:
-        url = settings.MEDIA_URL + path.replace(settings.MEDIA_ROOT, '')
-
-    # Remove multiple forward-slashes from the path portion of the url.
-    # Break url into a list.
-    url_parts = list(urlparse(url))
-    # Replace two or more slashes with a single slash.
-    url_parts[2] = re.sub('\/+', '/', url_parts[2])
-    # Reconstruct the url.
-    url = urlunparse(url_parts)
-
-    return url
+    thumb_saefile = StringIO()
+    upload_ext = os.path.splitext(filename)[1][1:]
+    if upload_ext.upper() == 'JPG': upload_ext='JPEG'
+    imagefit.save(thumb_saefile,format=upload_ext)
+    storage_client.put(domain,get_thumb_filename(filename),storage.Object(thumb_saefile.getvalue()))
 
 
 def get_upload_filename(upload_name, user):
@@ -93,18 +84,21 @@ def get_upload_filename(upload_name, user):
         user_path = ''
 
     # Generate date based path to put uploaded file.
-    date_path = datetime.now().strftime('%Y/%m/%d')
+    date_path = datetime.now().strftime('%Y_%m_%d')
 
-    # Complete upload path (upload_path + date_path).
-    upload_path = os.path.join(settings.CKEDITOR_UPLOAD_PATH, user_path, \
-            date_path)
+    ## Complete upload path (upload_path + date_path).
+    ## upload_path = os.path.join(settings.CKEDITOR_UPLOAD_PATH, user_path, \
+    #         date_path)
 
-    # Make sure upload_path exists.
-    if not os.path.exists(upload_path):
-        os.makedirs(upload_path)
+    ## Make sure upload_path exists.
+    #if not os.path.exists(upload_path):
+    #    os.makedirs(upload_path)
 
     # Get available name and return.
-    return get_available_name(os.path.join(upload_path, upload_name))
+    #return get_available_name(os.path.join(upload_path, upload_name))
+    #only filename support, can't mkdir
+    upload_path = user_path + date_path
+    return get_available_name(upload_path+upload_name)
 
 
 @csrf_exempt
@@ -121,17 +115,17 @@ def upload(request):
 
     # Open output file in which to store upload.
     upload_filename = get_upload_filename(upload.name, request.user)
-    out = open(upload_filename, 'wb+')
+    #out = open(upload_filename, 'wb+')
+    out = StringIO()
 
     # Iterate through chunks and write to destination.
     for chunk in upload.chunks():
         out.write(chunk)
-    out.close()
 
+    url = storage_client.put(domain,upload_filename,storage.Object(out.getvalue()))
     create_thumbnail(upload_filename)
 
     # Respond with Javascript sending ckeditor upload url.
-    url = get_media_url(upload_filename)
     return HttpResponse("""
     <script type='text/javascript'>
         window.parent.CKEDITOR.tools.callFunction(%s, '%s');
@@ -151,14 +145,15 @@ def get_image_files(user=None):
     else:
         user_path = ''
 
-    browse_path = os.path.join(settings.CKEDITOR_UPLOAD_PATH, user_path)
+    #browse_path = os.path.join(settings.CKEDITOR_UPLOAD_PATH, user_path)
 
-    for root, dirs, files in os.walk(browse_path):
-        for filename in [os.path.join(root, x) for x in files]:
-            # bypass for thumbs
-            if os.path.splitext(filename)[0].endswith('_thumb'):
-                continue
-            yield filename
+    #TODO deal with user
+    for item in storage_client.list(domain):
+        # bypass for thumbs
+        filename = item['name']
+        if not filename.startswith(user_path) or os.path.splitext(filename)[0].endswith('_thumb'):
+            continue
+        yield filename
 
 
 def get_image_browse_urls(user=None):
@@ -169,8 +164,8 @@ def get_image_browse_urls(user=None):
     images = []
     for filename in get_image_files(user=user):
         images.append({
-            'thumb': get_media_url(get_thumb_filename(filename)),
-            'src': get_media_url(filename)
+            'thumb': storage_client.url(domain,get_thumb_filename(filename)),
+            'src': storage_client.url(domain,filename)
         })
 
     return images
@@ -179,5 +174,6 @@ def get_image_browse_urls(user=None):
 def browse(request):
     context = RequestContext(request, {
         'images': get_image_browse_urls(request.user),
+        'STATIC_URL':settings.STATIC_URL
     })
     return render_to_response('browse.html', context)
